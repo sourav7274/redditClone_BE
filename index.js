@@ -47,13 +47,19 @@ async function getUserByID(id) {
       path: "comments",
       populate: {
         path: "postId",
-        select: "title",
+        select: "title author",
+        populate: {
+          path: "author",
+          select: "name",
+        },
       },
     })
     .populate({
       path: "likedPosts",
-      populate: { path: "postId", select: "title" },
+      select: "title author",
+      populate: { path: "author", select: "name usrImgUrl" },
     })
+
     .populate("requests");
   if (user) {
     return user;
@@ -69,19 +75,17 @@ async function getUserByEmail(email) {
       path: "comments",
       populate: {
         path: "postId",
-        select: "title",
-      },
-    })
-    .populate({
-      path: "likedPosts",
-      populate: {
-        path: "postId",
-        select: "title",
+        select: "title author",
         populate: {
           path: "author",
           select: "name",
         },
       },
+    })
+    .populate({
+      path: "likedPosts",
+      select: "title author",
+      populate: { path: "author", select: "name usrImgUrl" },
     })
     .populate("requests");
   if (user) {
@@ -142,6 +146,7 @@ app.get("/users/:id", async (req, res) => {
   try {
     const user = await getUserByID(req.params.id);
     if (user) {
+      console.log(user);
       res.status(200).json({ message: "Success", user });
     } else {
       res.status(404).json({ message: "User not found" });
@@ -326,14 +331,14 @@ app.post("/likepost", async (req, res) => {
       return res.status(400).json({ error: "Missing userId or postId" });
     }
     if (existLike) {
-      await User.updateOne({ _id: userId }, { $pull: { likedPosts: postId} });
+      await User.updateOne({ _id: userId }, { $pull: { likedPosts: postId } });
 
       await Like.deleteOne({ userId, postId });
 
       post.likeCount -= 1;
       await post.save();
 
-       res.status(201).json({
+      res.status(201).json({
         message: "Unliked the post",
       });
     } else {
@@ -346,7 +351,7 @@ app.post("/likepost", async (req, res) => {
       user.likedPosts.push(postId);
       await user.save();
       const likeCount = await Like.countDocuments({ postId });
-       res.status(201).json({
+      res.status(201).json({
         message: "Liked the post",
         liked: true,
         likeCount,
