@@ -29,6 +29,7 @@ const User = require("./models/user.model");
 const Like = require("./models/like.model");
 const Comment = require("./models/comments.model");
 const Message = require("./models/messages.model");
+const { error } = require("console");
 
 app.get("/", (req, res) => {
   res.json({ message: "Testing" });
@@ -97,7 +98,10 @@ async function getUserByEmail(email) {
 
 async function getPostById(id) {
   const post = await Post.findById(id)
-    .populate("author")
+    .populate({
+      path:"author",
+      select:"_id name email usrImgUrl "
+    })
     .populate({
       path: "comments",
       populate: {
@@ -304,17 +308,16 @@ app.post("/signUp", async (req, res) => {
   }
 });
 
-app.get("/posts/:id", async (req, res) => {
+app.get("/postById/:id", async (req, res) => {
   try {
     const post = await getPostById(req.params.id);
-
     if (post) {
       res.status(201).json({ message: "Post Found", post });
     } else {
       res.status(404).json({ error: "Post Found" });
     }
   } catch (err) {
-    res.status(500).json({ error: "Internal Server Error", err });
+    res.status(500).json({ error: "Internal Server Error",err: err.message });
   }
 });
 
@@ -381,6 +384,23 @@ app.get("/commentByPostId/:id", async (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ error: "Internal Server Error", err });
+  }
+});
+
+app.put("/user/:id/updateDetails", async (req, res) => {
+  try {
+    const params = req.body;
+    const id = req.params.id;
+    console.log(params);
+    const user = await User.findByIdAndUpdate(id, params, { new: true });
+    if (user) {
+      res.status(201).json({ message: "user updated succesfuuly" });
+    } else {
+      res.status(400).json({ error: "error while updating user" });
+    }
+  } catch (err) {
+    console.log("some error occured", err);
+    res.status(500).json({ error: "Internal server error", err });
   }
 });
 
