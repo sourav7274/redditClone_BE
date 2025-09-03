@@ -28,6 +28,7 @@ const Post = require("./models/post.model");
 const User = require("./models/user.model");
 const Like = require("./models/like.model");
 const Comment = require("./models/comments.model");
+const Friend  =require("./models/friend.model")
 const Message = require("./models/messages.model");
 const { error } = require("console");
 
@@ -181,7 +182,8 @@ app.get("/users", async (req, res) => {
 app.get("/otherUsers", async (req, res) => {
   const { id } = req.query;
   try {
-    const users = await User.find({ _id: { $ne: id } });
+    const users = await User.find({ _id: { $ne: id } })
+    .select("name email usrImgUrl")
     res.json(users);
   } catch (err) {
     res.status(500).json(err);
@@ -403,6 +405,103 @@ app.put("/user/:id/updateDetails", async (req, res) => {
     res.status(500).json({ error: "Internal server error", err });
   }
 });
+
+app.post("/friend-request", async (req, res) => {
+  try {
+    const { sendingUserId, recievingUserId, note } = req.body;
+
+    if (sendingUserId === recievingUserId) {
+      return res.status(400).json({ message: "You cannot send a request to yourself" });
+    }
+
+    // Check if a request already exists
+    const existingRequest = await Friend.findOne({
+      sendingUserId,
+      recievingUserId,
+      status: "pending",
+    });
+
+    if (existingRequest) {
+      return res.status(400).json({ message: "Friend request already sent" });
+    }
+
+    const newRequest = new Friend({ sendingUserId, recievingUserId, note });
+    await newRequest.save();
+
+    res.status(201).json({ message: "Friend request sent" });
+  } catch (err) {
+    console.error("Error sending friend request:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+});
+
+app.get("/friend-requests/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const requests = await Friend.find({ recievingUserId: userId, status: "pending" })
+      .populate("sendingUserId", "name email usrImgUrl");
+
+    res.status(200).json({ requests });
+  } catch (err) {
+    console.error("Error fetching friend requests:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+});
+
+app.get("/sent-friend-requests/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const requests = await Friend.find({ sendingUserId: userId, status: "pending" })
+      .select("recievingUserId")
+
+    res.status(200).json({ requests });
+  } catch (err) {
+    console.error("Error fetching friend requests:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+});
+
+app.put("/friend-request/:requestId", async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { status } = req.body; // accepted / rejected
+
+    if (!["accepted", "rejected"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+
+    const friendRequest = await Friend.findById(requestId);
+
+    if (!friendRequest) {
+      return res.status(404).json({ message: "Friend request not found" });
+    }
+
+    friendRequest.status = status;
+    await friendRequest.save();
+
+    // If accepted, add each other to friends list
+    if (status === "accepted") {
+      const sender = await User.findById(friendRequest.sendingUserId);
+      const receiver = await User.findById(friendRequest.recievingUserId);
+
+      if (sender && receiver) {
+        sender.friends.push(receiver._id);
+        receiver.friends.push(sender._id);
+        await sender.save();
+        await receiver.save();
+      }
+    }
+
+    res.status(200).json({ message: `Friend request ${status}`, friendRequest });
+  } catch (err) {
+    console.error("Error updating friend request:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+});
+
+
 
 // Message Part
 
