@@ -10,7 +10,7 @@ const userSchema = new mongoose.Schema({
     default: "https://placehold.co/500x500?text=UserImg+Placeholder",
   },
   posts: [{ type: mongoose.Schema.Types.ObjectId, ref: "Post" }],
-  friends: [String],
+  friends: [{type: mongoose.Schema.Types.ObjectId, ref: "User"}],
   interests: [
     {
       enum: [

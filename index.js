@@ -10,9 +10,9 @@ const http = require("http");
 const app = express();
 const server = http.createServer(app);
 const corsOption = {
-  origin: "*", // Fixed typo from "origni" to "origin"
+  origin: "*",
   credentials: true,
-  optionsSuccessStatus: 200, // Fixed typo from "optionSuccessStatus" to "optionsSuccessStatus"
+  optionsSuccessStatus: 200,
 };
 const io = new Server(server, {
   cors: {
@@ -28,7 +28,7 @@ const Post = require("./models/post.model");
 const User = require("./models/user.model");
 const Like = require("./models/like.model");
 const Comment = require("./models/comments.model");
-const Friend  =require("./models/friend.model")
+const Friend = require("./models/friend.model");
 const Message = require("./models/messages.model");
 const { error } = require("console");
 
@@ -89,7 +89,8 @@ async function getUserByEmail(email) {
       select: "title author",
       populate: { path: "author", select: "name usrImgUrl" },
     })
-    .populate("requests");
+    .populate("requests")
+    .populate("friends", "name usrImgUrl");
   if (user) {
     return user;
   } else {
@@ -100,8 +101,8 @@ async function getUserByEmail(email) {
 async function getPostById(id) {
   const post = await Post.findById(id)
     .populate({
-      path:"author",
-      select:"_id name email usrImgUrl "
+      path: "author",
+      select: "_id name email usrImgUrl ",
     })
     .populate({
       path: "comments",
@@ -182,8 +183,9 @@ app.get("/users", async (req, res) => {
 app.get("/otherUsers", async (req, res) => {
   const { id } = req.query;
   try {
-    const users = await User.find({ _id: { $ne: id } })
-    .select("name email usrImgUrl")
+    const users = await User.find({ _id: { $ne: id } }).select(
+      "name email usrImgUrl"
+    );
     res.json(users);
   } catch (err) {
     res.status(500).json(err);
@@ -234,7 +236,7 @@ app.post("/signIn", async (req, res) => {
       res.status(404).json({ message: "User not found" });
     }
   } catch (err) {
-    res.status(500).json({ message: "Server Error" });
+    res.status(500).json({ message: "Server Error", err: err.message });
   }
 });
 
@@ -319,7 +321,7 @@ app.get("/postById/:id", async (req, res) => {
       res.status(404).json({ error: "Post Found" });
     }
   } catch (err) {
-    res.status(500).json({ error: "Internal Server Error",err: err.message });
+    res.status(500).json({ error: "Internal Server Error", err: err.message });
   }
 });
 
@@ -411,7 +413,9 @@ app.post("/friend-request", async (req, res) => {
     const { sendingUserId, recievingUserId, note } = req.body;
 
     if (sendingUserId === recievingUserId) {
-      return res.status(400).json({ message: "You cannot send a request to yourself" });
+      return res
+        .status(400)
+        .json({ message: "You cannot send a request to yourself" });
     }
 
     // Check if a request already exists
@@ -439,8 +443,10 @@ app.get("/friend-requests/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const requests = await Friend.find({ recievingUserId: userId, status: "pending" })
-      .populate("sendingUserId", "name email usrImgUrl");
+    const requests = await Friend.find({
+      recievingUserId: userId,
+      status: "pending",
+    }).populate("sendingUserId", "name usrImgUrl");
 
     res.status(200).json({ requests });
   } catch (err) {
@@ -453,8 +459,12 @@ app.get("/sent-friend-requests/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const requests = await Friend.find({ sendingUserId: userId, status: "pending" })
-      .select("recievingUserId")
+    const requests = await Friend.find({
+      sendingUserId: userId,
+      status: "pending",
+    })
+      .select("recievingUserId _id")
+      .populate("recievingUserId", "name usrImgUrl");
 
     res.status(200).json({ requests });
   } catch (err) {
@@ -463,7 +473,7 @@ app.get("/sent-friend-requests/:userId", async (req, res) => {
   }
 });
 
-app.put("/friend-request/:requestId", async (req, res) => {
+app.put("/friend-request-status/:requestId", async (req, res) => {
   try {
     const { requestId } = req.params;
     const { status } = req.body; // accepted / rejected
@@ -494,14 +504,45 @@ app.put("/friend-request/:requestId", async (req, res) => {
       }
     }
 
-    res.status(200).json({ message: `Friend request ${status}`, friendRequest });
+    res
+      .status(200)
+      .json({ message: `Friend request ${status}`, friendRequest });
   } catch (err) {
     console.error("Error updating friend request:", err);
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
 
+// Allow a sender to unsend (delete) a pending friend request
+app.delete("/friend-request/:requestId", async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { sender } = req.query; // sender must match the request's sendingUserId
 
+    const request = await Friend.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ message: "Friend request not found" });
+    }
+
+    if (request.status !== "pending") {
+      return res
+        .status(400)
+        .json({ message: "Only pending requests can be unsent" });
+    }
+
+    if (sender && String(request.sendingUserId) !== String(sender)) {
+      return res
+        .status(403)
+        .json({ message: "Not authorized to unsend this request" });
+    }
+
+    await Friend.deleteOne({ _id: requestId });
+    return res.status(200).json({ message: "Friend request unsent" });
+  } catch (err) {
+    console.error("Error unsending friend request:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+});
 
 // Message Part
 
