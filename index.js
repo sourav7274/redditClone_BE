@@ -133,8 +133,8 @@ app.get("/posts/:id", async (req, res) => {
         },
       });
 
-    const otherPosts = posts.filter((post) => post.author._id != req.params.id);
-    const userPosts = posts.filter((post) => post.author._id == req.params.id);
+    const otherPosts = posts.filter((post) => post?.author?._id != req.params.id);
+    const userPosts = posts.filter((post) => post?.author?._id == req.params.id);
 
     const allPosts = [...otherPosts, ...userPosts];
 
@@ -144,7 +144,8 @@ app.get("/posts/:id", async (req, res) => {
       res.status(404).json({ message: "No post found" });
     }
   } catch (err) {
-    res.status(500).json({ message: "Server Error" });
+    console.log(err.message)
+    res.status(500).json({ message: "Server Error",err:err.message });
   }
 });
 
@@ -183,7 +184,7 @@ app.get("/users", async (req, res) => {
 app.get("/otherUsers", async (req, res) => {
   const { id } = req.query;
   try {
-    const users = await User.find({ _id: { $ne: id } }).select(
+    const users = await User.find({ _id: { $ne: id }, friends: { $ne: id } }).select(
       "name email usrImgUrl"
     );
     res.json(users);
@@ -408,6 +409,17 @@ app.put("/user/:id/updateDetails", async (req, res) => {
   }
 });
 
+app.get("/user/:id/friends", async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id)
+    .populate("friends", "name usrImgUrl");
+    const friends = user.friends;
+    res.status(200).json({ message: "data fetched", friends });
+  } catch (err) {
+    res.status(500).json({ error: "Internal Server Error", err });
+  }
+});
+
 app.post("/friend-request", async (req, res) => {
   try {
     const { sendingUserId, recievingUserId, note } = req.body;
@@ -477,7 +489,6 @@ app.put("/friend-request-status/:requestId", async (req, res) => {
   try {
     const { requestId } = req.params;
     const { status } = req.body; // accepted / rejected
-
     if (!["accepted", "rejected"].includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }
@@ -539,80 +550,80 @@ app.delete("/friend-request/:requestId", async (req, res) => {
     await Friend.deleteOne({ _id: requestId });
     return res.status(200).json({ message: "Friend request unsent" });
   } catch (err) {
-    console.error("Error unsending friend request:", err);
+    console.error("Error unsending friend request:", err.message);
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 });
 
 // Message Part
 
-// io.on("connection", (socket) => {
-//   console.log("Socket Connected", socket.id);
+io.on("connection", (socket) => {
+  console.log("Socket Connected", socket.id);
 
-//   // ✅ Join room for private signaling
-//   socket.on("join", (userId) => {
-//     socket.join(userId);
-//     console.log(`User ${userId} joined their own room`);
-//   });
+  // ✅ Join room for private signaling
+  socket.on("join", (userId) => {
+    socket.join(userId);
+    console.log(`User ${userId} joined their own room`);
+  });
 
-//   // ✅ Signaling: Offer
-//   socket.on("offer", ({ target, offer, sender }) => {
-//     io.to(target).emit("offer", { offer, sender });
-//   });
+  // ✅ Signaling: Offer
+  socket.on("offer", ({ target, offer, sender }) => {
+    io.to(target).emit("offer", { offer, sender });
+  });
 
-//   // ✅ Signaling: Answer
-//   socket.on("answer", ({ target, answer }) => {
-//     io.to(target).emit("answer", { answer });
-//   });
+  // ✅ Signaling: Answer
+  socket.on("answer", ({ target, answer }) => {
+    io.to(target).emit("answer", { answer });
+  });
 
-//   // ✅ Signaling: ICE Candidates
-//   socket.on("ice-candidate", ({ target, candidate }) => {
-//     io.to(target).emit("ice-candidate", { candidate });
-//   });
+  // ✅ Signaling: ICE Candidates
+  socket.on("ice-candidate", ({ target, candidate }) => {
+    io.to(target).emit("ice-candidate", { candidate });
+  });
 
-//   // ✅ Disconnect call handler
-//   socket.on("disconnect-call", ({ to }) => {
-//     io.to(to).emit("disconnect-call");
-//   });
+  // ✅ Disconnect call handler
+  socket.on("disconnect-call", ({ to }) => {
+    io.to(to).emit("disconnect-call");
+  });
 
-//   // ✅ (Optional) Disconnect log
-//   socket.on("disconnect", () => {
-//     console.log("User disconnected", socket.id);
-//   });
+  // ✅ (Optional) Disconnect log
+  socket.on("disconnect", () => {
+    console.log("User disconnected", socket.id);
+  });
 
-//   // ✅ Chat message handler (leave it as is if working)
-//   socket.on("send_message", async (data) => {
-//     const { sender, receiver, message } = data;
-//     try {
-//       const newMessage = new Message({ sender, receiver, message });
-//       await newMessage.save();
+  // ✅ Chat message handler (leave it as is if working)
+  socket.on("send_message", async (data) => {
+    const { sender, receiver, message } = data;
+    try {
+      const newMessage = new Message({ sender, receiver, message });
+      await newMessage.save();
 
-//       // Send to receiver only
-//       io.to(receiver).emit("receive_message", data);
-//     } catch (err) {
-//       console.log("Error Server");
-//       socket.emit("error_message", { error: "server error" });
-//     }
-//   });
-// });
+      // Send to receiver only
+      io.to(receiver).emit("receive_message", data);
+    } catch (err) {
+      console.log("Error Server");
+      socket.emit("error_message", { error: "server error" });
+    }
+  });
+});
 
-// app.get("/messages", async (req, res) => {
-//   const { sender, receiver } = req.query;
-//   try {
-//     const message = await Message.find({
-//       $or: [
-//         { sender, receiver },
-//         {
-//           sender: receiver,
-//           receiver: sender,
-//         },
-//       ],
-//     }).sort({ createdAt: 1 });
-//     res.json(message);
-//   } catch (err) {
-//     res.status(500).json({ error: "Server Error".err });
-//   }
-// });
+app.get("/messages", async (req, res) => {
+  const { sender, receiver } = req.query;
+  try {
+    const message = await Message.find({
+      $or: [
+        { sender, receiver },
+        {
+          sender: receiver,
+          receiver: sender,
+        },
+      ],
+    }).sort({ createdAt: 1 });
+    res.json(message);
+  } catch (err) {
+    res.status(500).json({ error: "Server Error".err });
+  }
+});
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
