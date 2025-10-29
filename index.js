@@ -582,14 +582,36 @@ io.on("connection", (socket) => {
   });
 
   // ✅ Disconnect call handler
-  socket.on("disconnect-call", ({ to }) => {
-    io.to(to).emit("disconnect-call");
-  });
+  socket.on("disconnect-call", ({ to, from }) => {
+  console.log(`📴 ${from} ended call with ${to}`);
+  
+  // Notify both participants
+  io.to(to).emit("disconnect-call", { by: from });
+  io.to(from).emit("disconnect-call", { by: from });
+});
 
   // ✅ (Optional) Disconnect log
   socket.on("disconnect", () => {
     console.log("User disconnected", socket.id);
   });
+
+  // Call user
+  socket.on("call_user",({from,to,callerName}) =>{
+    io.to(to).emit("incoming_call",{from,callerName})
+    console.log("call-inititing")
+  })
+
+  // Accept Call
+  socket.on("accept_call",({from,to}) =>{
+    console.log("call-accpted")
+    io.to(from).emit("call_accepted",{by:to})
+  })
+
+  //Reject Call
+  socket.on("reject_call",({from,to}) =>{
+    console.log("call-rejected")
+    io.to(from).emit("call_rejected",{by:to})
+  })
 
   // ✅ Chat message handler (leave it as is if working)
   socket.on("send_message", async (data) => {
